@@ -25,3 +25,8 @@ int neigungUpdate() {
   digitalWrite(NEIGUNG_LED_PIN, geneigt);     // LED an, solange geneigt
   return geneigt ? 1 : -1;
 }
+
+// Rückgabe: true, solange der Sensor geneigt ist
+bool neigungGeneigt() {
+  return neigungSensor.read() != neigungGeradePegel;
+}
