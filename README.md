@@ -17,18 +17,20 @@ NWT-Projekt: Arduino-Code für unseren Mars-Rover.
 | Neigungssensor KY-027 (LED L) | D9 |
 | Temperatur/Feuchtigkeit DHT11 | D4 |
 | Helligkeitssensor | A3 |
-| LCD-Display 16x2 mit I2C (SDA) | A4 |
-| LCD-Display 16x2 mit I2C (SCL) | A5 |
+| LCD-Display 20x4 mit I2C (SDA) | A4 |
+| LCD-Display 20x4 mit I2C (SCL) | A5 |
 
 Neue Sensoren bitte hier eintragen, damit kein Pin doppelt belegt wird.
 
 ## LCD-Display
 
-Zeigt Feuchtigkeit, Temperatur, Helligkeit und Neigung live an. In `rover/anzeige.ino`
+Sunstar 2004A (20 Zeichen × 4 Zeilen) mit I2C-Modul. Zeigt Feuchtigkeit, Temperatur,
+Helligkeit und Neigung live an, jeden Wert in einer eigenen Zeile. In `rover/anzeige.ino`
 kann man oben umschalten:
 
-- `LAUFSCHRIFT = true`: große Laufschrift über beide Zeilen (ein Durchlauf dauert ca. 36 Sekunden)
-- `LAUFSCHRIFT = false`: zwei Seiten, die sich alle 3 Sekunden abwechseln
+- `BALKENANZEIGE = true`: Werte mit Balken, die live mitwachsen, dazu ein Neigungs-Symbol
+  (flache Linie = gerade, Rampe = schief)
+- `BALKENANZEIGE = false`: nur die Werte als Text
 
 Ist beim Start kein Display angeschlossen, läuft der Rover normal weiter.
 Zeigt das Display nur Kästchen oder gar nichts, am blauen Drehregler hinten den Kontrast einstellen.

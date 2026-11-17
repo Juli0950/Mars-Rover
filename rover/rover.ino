@@ -9,7 +9,7 @@
     neigung.ino       – Neigungssensor KY-027          (Pin D2, LED an D9)
     helligkeit.ino    – Helligkeitssensor              (Pin A3)
     feuchtigkeit.ino  – Temperatur/Feuchtigkeit DHT11  (Pin D4)
-    anzeige.ino       – LCD-Display 16x2 mit I2C       (SDA an A4, SCL an A5)
+    anzeige.ino       – LCD-Display 20x4 mit I2C       (SDA an A4, SCL an A5)
 
   Benötigte Bibliotheken (Werkzeuge -> Bibliotheken verwalten):
     - Bounce2 (von Thomas O Fredericks)
