@@ -11,13 +11,13 @@
 
   Balkenanzeige (true)            Nur Werte (false)
   +--------------------+          +--------------------+
-  |Feuchte: 45% ###    |          |Feuchtigkeit: 45 %  |
-  |Temp:   22°C ###    |          |Temperatur:   22 °C |
-  |Hell:      7 #####  |          |Helligkeit:   7     |
-  |Neigung: gerade ____|          |Neigung:      gerade|
+  |Feuchte: 45% ###    |          |Feuchte:    45 %    |
+  |Temp:   22°C ###    |          |Temperatur: 22 °C   |
+  |Hell:  300lx ###    |          |Helligkeit: 300 lx  |
+  |Neigung: gerade ____|          |Neigung:    gerade  |
   +--------------------+          +--------------------+
-  Die Balken wachsen live mit den Werten. Ist der Rover schief,
-  wird aus der flachen Linie ____ eine ansteigende Rampe.
+  Die Balken wachsen live mit den Werten. Fährt der Rover bergauf,
+  wird aus der flachen Linie ____ eine Rampe nach oben, bergab eine nach unten.
 */
 #include <Wire.h>
 #include <hd44780.h>
@@ -33,7 +33,8 @@ const unsigned long ANZEIGE_INTERVALL_MS = 250;  // so oft wird das Display neu 
 // Höchstwerte = Balken ganz voll
 const float FEUCHTIGKEIT_MAX = 100;  // %
 const float TEMPERATUR_MAX = 50;     // °C (mehr kann der DHT11 nicht messen)
-const float HELLIGKEIT_MAX = 10;     // Stufe 10
+const float LUX_BALKEN_MAX = 100000; // Lux (pralle Sonne). Der Helligkeits-Balken ist logarithmisch,
+                                     // sonst wäre er bei Zimmerlicht (ca. 300 lx) fast leer.
 
 // ---------- Display ----------
 const int SPALTEN = 20;
@@ -42,7 +43,8 @@ const int BALKEN_LAENGE = 7;  // Kästchen pro Balken (jedes Kästchen hat 5 Pix
 
 const byte VOLL = 255;    // volles Kästchen (im Display eingebaut)
 const byte GRAD = 0xDF;   // Grad-Zeichen ° (im Display eingebaut)
-const byte RAMPE = 4;     // eigene Zeichen 4 bis 7 = Neigungs-Symbol
+const byte RAMPE_HOCH = 4;    // eigene Zeichen 4 und 5 = Rampe nach oben (bergauf)
+const byte RAMPE_RUNTER = 6;  // eigene Zeichen 6 und 7 = Rampe nach unten (bergab)
 
 hd44780_I2Cexp lcd;  // findet Adresse und Anschlussbelegung des Displays selbst
 bool lcdVorhanden = false;
@@ -55,11 +57,12 @@ byte EIGENE_ZEICHEN[8][8] = {
   {0b11000, 0b11000, 0b11000, 0b11000, 0b11000, 0b11000, 0b11000, 0b11000},
   {0b11100, 0b11100, 0b11100, 0b11100, 0b11100, 0b11100, 0b11100, 0b11100},
   {0b11110, 0b11110, 0b11110, 0b11110, 0b11110, 0b11110, 0b11110, 0b11110},
-  // 4-7: Neigungs-Symbol, eine Rampe über 4 Kästchen nebeneinander
-  {0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00111, 0b11111},
-  {0b00000, 0b00000, 0b00000, 0b00000, 0b00111, 0b11111, 0b11111, 0b11111},
-  {0b00000, 0b00000, 0b00111, 0b11111, 0b11111, 0b11111, 0b11111, 0b11111},
-  {0b00111, 0b11111, 0b11111, 0b11111, 0b11111, 0b11111, 0b11111, 0b11111},
+  // 4-5: Rampe nach oben über 2 Kästchen nebeneinander
+  {0b00000, 0b00000, 0b00000, 0b00000, 0b00011, 0b00111, 0b01111, 0b11111},
+  {0b00011, 0b00111, 0b01111, 0b11111, 0b11111, 0b11111, 0b11111, 0b11111},
+  // 6-7: Rampe nach unten über 2 Kästchen nebeneinander
+  {0b11000, 0b11100, 0b11110, 0b11111, 0b11111, 0b11111, 0b11111, 0b11111},
+  {0b00000, 0b00000, 0b00000, 0b00000, 0b11000, 0b11100, 0b11110, 0b11111},
 };
 
 // ---------- Hauptfunktionen ----------
@@ -81,21 +84,22 @@ void anzeigeSetup() {
 
 // Zeigt die Werte an. Einfach bei jedem loop()-Durchlauf aufrufen:
 // Die Funktion entscheidet selbst, wann das Display neu beschrieben wird.
-void anzeigeUpdate(float feuchtigkeit, float temperatur, int helligkeit, bool geneigt) {
+// neigung ist GERADE, STEIGT, SINKT oder UNKLAR (siehe rover.ino)
+void anzeigeUpdate(float feuchtigkeit, float temperatur, float lux, int neigung) {
   if (!lcdVorhanden) return;
   if (millis() - letzteAnzeige < ANZEIGE_INTERVALL_MS) return;
   letzteAnzeige = millis();
 
   if (BALKENANZEIGE) {
-    balkenAnzeigen(feuchtigkeit, temperatur, helligkeit, geneigt);
+    balkenAnzeigen(feuchtigkeit, temperatur, lux, neigung);
   } else {
-    werteAnzeigen(feuchtigkeit, temperatur, helligkeit, geneigt);
+    werteAnzeigen(feuchtigkeit, temperatur, lux, neigung);
   }
 }
 
 // ---------- Balkenanzeige ----------
 
-void balkenAnzeigen(float feuchtigkeit, float temperatur, int helligkeit, bool geneigt) {
+void balkenAnzeigen(float feuchtigkeit, float temperatur, float lux, int neigung) {
   char text[SPALTEN + 1];
   char zahl[4];  // höchstens 3 Zeichen, z. B. "100" oder "--"
 
@@ -112,16 +116,30 @@ void balkenAnzeigen(float feuchtigkeit, float temperatur, int helligkeit, bool g
   lcd.print(text);
   balkenSchreiben(temperatur, TEMPERATUR_MAX);
 
-  snprintf(text, sizeof(text), "Hell:   %4d ", helligkeit);
+  snprintf(text, sizeof(text), "Hell:%5ldlx ", (long)(lux + 0.5));
   lcd.setCursor(0, 2);
   lcd.print(text);
-  balkenSchreiben(helligkeit, HELLIGKEIT_MAX);
+  // logarithmisch: 1 lx, 10 lx, 100 lx, 1000 lx, ... wachsen jeweils um gleich viel
+  balkenSchreiben(log10(lux + 1), log10(LUX_BALKEN_MAX + 1));
 
-  // Neigung: Text und Symbol (gerade = flacher Boden, schief = Rampe)
+  // Neigung: Text und Symbol in den letzten 4 Kästchen
+  //   gerade: ____    steigt: __ + Rampe hoch    sinkt: Rampe runter + __
+  snprintf(text, sizeof(text), "Neigung: %-6s ", neigungText(neigung));
   lcd.setCursor(0, 3);
-  lcd.print(geneigt ? "Neigung: schief " : "Neigung: gerade ");
+  lcd.print(text);
+
+  byte symbol[4] = {'_', '_', '_', '_'};
+  if (neigung == STEIGT) {
+    symbol[2] = RAMPE_HOCH;
+    symbol[3] = RAMPE_HOCH + 1;
+  } else if (neigung == SINKT) {
+    symbol[0] = RAMPE_RUNTER;
+    symbol[1] = RAMPE_RUNTER + 1;
+  } else if (neigung == UNKLAR) {
+    for (byte i = 0; i < 4; i++) symbol[i] = ' ';
+  }
   for (byte i = 0; i < 4; i++) {
-    lcd.write(geneigt ? (byte)(RAMPE + i) : (byte)'_');
+    lcd.write(symbol[i]);
   }
 }
 
@@ -147,23 +165,24 @@ void balkenSchreiben(float wert, float maximum) {
 
 // ---------- Nur Werte ----------
 
-void werteAnzeigen(float feuchtigkeit, float temperatur, int helligkeit, bool geneigt) {
+void werteAnzeigen(float feuchtigkeit, float temperatur, float lux, int neigung) {
   char text[SPALTEN + 1];
   char zahl[4];  // höchstens 3 Zeichen, z. B. "100" oder "--"
 
-  // Alle Werte beginnen in Spalte 14, damit sie schön untereinander stehen
+  // Alle Werte beginnen in Spalte 12, damit sie schön untereinander stehen
+  // und auch "Helligkeit: 99999 lx" noch in die 20 Zeichen passt
   zahlText(zahl, feuchtigkeit);
-  snprintf(text, sizeof(text), "Feuchtigkeit: %s %%", zahl);
+  snprintf(text, sizeof(text), "Feuchte:    %s %%", zahl);
   zeileSchreiben(0, text);
 
   zahlText(zahl, temperatur);
-  snprintf(text, sizeof(text), "Temperatur:   %s %cC", zahl, (char)GRAD);
+  snprintf(text, sizeof(text), "Temperatur: %s %cC", zahl, (char)GRAD);
   zeileSchreiben(1, text);
 
-  snprintf(text, sizeof(text), "Helligkeit:   %d", helligkeit);
+  snprintf(text, sizeof(text), "Helligkeit: %ld lx", (long)(lux + 0.5));
   zeileSchreiben(2, text);
 
-  snprintf(text, sizeof(text), "Neigung:      %s", geneigt ? "schief" : "gerade");
+  snprintf(text, sizeof(text), "Neigung:    %s", neigungText(neigung));
   zeileSchreiben(3, text);
 }
 

@@ -6,8 +6,8 @@
   Der Rover reagiert noch nicht auf die Werte – das kommt später hier in loop().
 
   Jeder Teil hat seinen eigenen Tab:
-    neigung.ino       – Neigungssensor KY-027          (Pin D2, LED an D9)
-    helligkeit.ino    – Helligkeitssensor              (Pin A3)
+    neigung.ino       – 2 Neigungssensoren KY-027      (bergauf: D2 + LED D9, bergab: D3 + LED D10)
+    helligkeit.ino    – Helligkeitssensor in Lux       (Pin A3)
     feuchtigkeit.ino  – Temperatur/Feuchtigkeit DHT11  (Pin D4)
     anzeige.ino       – LCD-Display 20x4 mit I2C       (SDA an A4, SCL an A5)
 
@@ -16,9 +16,15 @@
     - DHT sensor library (von Adafruit), dazu "Adafruit Unified Sensor" mitinstallieren
     - hd44780 (von Bill Perry)
 
-  Wichtig: Kein delay() in loop()! Sonst reagiert der Neigungssensor zu spät.
+  Wichtig: Kein delay() in loop()! Sonst reagieren die Neigungssensoren zu spät.
   Wann welcher Sensor ausgelesen wird, wird unten mit millis() geregelt.
 */
+
+// Neigungs-Zustände. Sie stehen hier im Haupt-Tab, weil mehrere Tabs sie benutzen.
+const int GERADE = 0;
+const int STEIGT = 1;    // Front zeigt nach oben (bergauf)
+const int SINKT = -1;    // Front zeigt nach unten (bergab)
+const int UNKLAR = 2;    // beide Sensoren ausgelöst, z. B. Rover hochgehoben
 
 const unsigned long HELLIGKEIT_INTERVALL_MS = 500;     // alle 0,5 Sekunden
 const unsigned long FEUCHTIGKEIT_INTERVALL_MS = 2000;  // alle 2 Sekunden (öfter kann der DHT11 nicht)
@@ -27,7 +33,7 @@ unsigned long letzteHelligkeitMessung = 0;
 unsigned long letzteFeuchtigkeitMessung = 0;
 
 // Die letzten Messwerte, damit das Display sie jederzeit anzeigen kann
-int aktuelleHelligkeit = 0;
+float aktuelleLux = 0;
 float aktuelleTemperatur = NAN;    // NAN = noch kein Wert gemessen
 float aktuelleFeuchtigkeit = NAN;
 
@@ -44,16 +50,18 @@ void loop() {
   unsigned long jetzt = millis();
 
   // Neigung: wird bei JEDEM Durchlauf geprüft, damit keine Änderung verpasst wird
-  int neigung = neigungUpdate();
-  if (neigung == 1)  Serial.println("Neigung steigt");
-  if (neigung == -1) Serial.println("Neigung sinkt");
+  if (neigungUpdate()) {
+    Serial.print("Neigung: ");
+    Serial.println(neigungText(neigungLesen()));
+  }
 
   // Helligkeit: alle 0,5 Sekunden
   if (jetzt - letzteHelligkeitMessung >= HELLIGKEIT_INTERVALL_MS) {
     letzteHelligkeitMessung = jetzt;
-    aktuelleHelligkeit = helligkeitMessen();
+    aktuelleLux = helligkeitMessen();
     Serial.print("Helligkeit: ");
-    Serial.println(aktuelleHelligkeit);
+    Serial.print(aktuelleLux, 0);  // 0 Nachkommastellen
+    Serial.println(" lx");
   }
 
   // Temperatur und Feuchtigkeit: alle 2 Sekunden
@@ -76,5 +84,5 @@ void loop() {
   }
 
   // Display: zeigt immer die neuesten Werte (macht nichts, wenn kein LCD angeschlossen ist)
-  anzeigeUpdate(aktuelleFeuchtigkeit, aktuelleTemperatur, aktuelleHelligkeit, neigungGeneigt());
+  anzeigeUpdate(aktuelleFeuchtigkeit, aktuelleTemperatur, aktuelleLux, neigungLesen());
 }
